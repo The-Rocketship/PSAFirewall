@@ -28,55 +28,53 @@ if (-not $Principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Adm
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Drawing, System.Windows.Forms
 Import-Module NetSecurity -ErrorAction SilentlyContinue
 
-# --- 2. DYNAMIC ICON ENGINE ---
+# --- 2. WIN32 PRIVATE ICON EXTRACTOR ---
+$Win32PrivateIconCode = @"
+using System;
+using System.Runtime.InteropServices;
+
+public class Win32PrivateIcon {
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    public static extern uint PrivateExtractIcons(
+        string szFileName,
+        int nIconIndex,
+        int cxIcon,
+        int cyIcon,
+        IntPtr[] phicon,
+        int[] piconid,
+        uint nIcons,
+        uint flags
+    );
+}
+"@
+Add-Type -TypeDefinition $Win32PrivateIconCode -ErrorAction SilentlyContinue
+
 function Get-AppIcon {
     try {
-        $Bmp = New-Object System.Drawing.Bitmap(64, 64)
-        $G = [System.Drawing.Graphics]::FromImage($Bmp)
-        $G.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $G.Clear([System.Drawing.Color]::Transparent)
-
-        # Draw Dark Blue Shield
-        $ShieldBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 30, 58, 138))
-        $BorderPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 96, 165, 250), 3)
-
-        $Points = @(
-            New-Object System.Drawing.Point(32, 4),
-            New-Object System.Drawing.Point(58, 14),
-            New-Object System.Drawing.Point(58, 36),
-            New-Object System.Drawing.Point(32, 60),
-            New-Object System.Drawing.Point(6, 36),
-            New-Object System.Drawing.Point(6, 14)
+        # Candidates for native Windows Security & Firewall icons
+        $Candidates = @(
+            @{ File = (Join-Path $env:SystemRoot "System32\wscui.cpl"); Index = 0 }, # Windows Security Center Shield
+            @{ File = (Join-Path $env:SystemRoot "System32\hnetcfg.dll"); Index = 1 },
+            @{ File = (Join-Path $env:SystemRoot "System32\imageres.dll"); Index = 106 }
         )
-        $G.FillPolygon($ShieldBrush, $Points)
-        $G.DrawPolygon($BorderPen, $Points)
 
-        # Draw "FW" text
-        $Font = New-Object System.Drawing.Font("Segoe UI", 20, [System.Drawing.FontStyle]::Bold)
-        $TextBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 244, 244, 245))
-        $SF = New-Object System.Drawing.StringFormat
-        $SF.Alignment = [System.Drawing.StringAlignment]::Center
-        $SF.LineAlignment = [System.Drawing.StringAlignment]::Center
-        $G.DrawString("FW", $Font, $TextBrush, 32, 33, $SF)
-
-        # Convert to PNG MemoryStream & WPF BitmapImage
-        $MS = New-Object System.IO.MemoryStream
-        $Bmp.Save($MS, [System.Drawing.Imaging.ImageFormat]::Png)
-        $MS.Position = 0
-
-        $BitmapImage = New-Object System.Windows.Media.Imaging.BitmapImage
-        $BitmapImage.BeginInit()
-        $BitmapImage.StreamSource = $MS
-        $BitmapImage.CacheOption = [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad
-        $BitmapImage.EndInit()
-        $BitmapImage.Freeze()
-
-        $G.Dispose()
-        $Bmp.Dispose()
-        return $BitmapImage
-    } catch {
-        return $null
-    }
+        foreach ($Item in $Candidates) {
+            if (Test-Path $Item.File) {
+                $hIcon = New-Object IntPtr[] 1
+                $ids = New-Object int[] 1
+                $res = [Win32PrivateIcon]::PrivateExtractIcons($Item.File, $Item.Index, 32, 32, $hIcon, $ids, 1, 0)
+                if ($res -gt 0 -and $hIcon[0] -ne [IntPtr]::Zero) {
+                    $WpfIcon = [System.Windows.Interop.Imaging]::CreateBitmapSourceFromHIcon(
+                        $hIcon[0],
+                        [System.Windows.Int32Rect]::Empty,
+                        [System.Windows.Media.Imaging.BitmapSizeOptions]::FromEmptyOptions()
+                    )
+                    return $WpfIcon
+                }
+            }
+        }
+    } catch {}
+    return $null
 }
 
 $Script:AppIcon = Get-AppIcon
