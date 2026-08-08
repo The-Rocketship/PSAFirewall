@@ -1,5 +1,7 @@
 # PSAFirewall 🛡️
 
+![PSAFirewall Preview](preview.png)
+
 **PSAFirewall** is a modern, dark minimalistic PowerShell GUI for Windows Defender Firewall with Advanced Security. Built with Windows Presentation Foundation (WPF) and native PowerShell NetSecurity cmdlets (`*-NetFirewall*`), it provides a sleek, responsive alternative to the built-in Windows firewall MMC snap-in.
 
 ---
